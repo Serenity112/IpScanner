@@ -99,9 +99,10 @@
             // 
             // textBox1
             // 
-            this.textBox1.Location = new System.Drawing.Point(237, 45);
+            this.textBox1.Font = new System.Drawing.Font("Segoe UI", 20.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point);
+            this.textBox1.Location = new System.Drawing.Point(237, 35);
             this.textBox1.Name = "textBox1";
-            this.textBox1.Size = new System.Drawing.Size(452, 23);
+            this.textBox1.Size = new System.Drawing.Size(452, 43);
             this.textBox1.TabIndex = 6;
             // 
             // FindAdapters

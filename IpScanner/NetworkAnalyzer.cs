@@ -1,7 +1,9 @@
 ﻿using System.Net;
+using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace IpScanner
 {
@@ -18,21 +20,28 @@ namespace IpScanner
             List<DeviceData> data = new List<DeviceData>();
             List<Thread> threads = new List<Thread>();
 
-            foreach (var adapterip in adapters)
+            foreach (var adapterStr in adapters)
             {
-                string[] networkIp = adapterip.Split('.');
-                networkIp[3] = "1";
+                Console.WriteLine("adapterStr: " + adapterStr);
 
-                foreach (string ipaddress in GetPossibleIp(networkIp))
+                string[] adapterData = adapterStr.Split(':');
+
+                IPAddress networkIp = IPAddress.Parse(adapterData[0]);
+                Console.WriteLine("networkIp: " + networkIp.ToString());
+
+                IPAddress maskIp = GetMaskByPrefix(Convert.ToInt32(adapterData[1]));
+                Console.WriteLine("maskIp: " + maskIp.ToString());
+
+                foreach (IPAddress ipaddress in GetPossibleIp(networkIp, maskIp))
                 {
-                    if(ipaddress == adapterip)
+                    if (ipaddress.ToString() == adapterStr)
                     {
                         continue;
                     }
 
                     Thread thread = new Thread(() =>
                     {
-                        DeviceData? d = SendArpRequest(IPAddress.Parse(adapterip), IPAddress.Parse(ipaddress));
+                        DeviceData? d = SendArpRequest(networkIp, ipaddress);
 
                         if (d != null)
                         {
@@ -57,16 +66,24 @@ namespace IpScanner
             byte[] macAddr = new byte[6];
             int macAddrLen = macAddr.Length;
 
-            int intSrcIp = BitConverter.ToInt32(SrcIp.GetAddressBytes(), 0);
+            //int intSrcIp = BitConverter.ToInt32(SrcIp.GetAddressBytes(), 0);
             int intDestIp = BitConverter.ToInt32(DestIp.GetAddressBytes(), 0);
 
-            if (PacketSender.SendARP(intDestIp, intSrcIp, macAddr, ref macAddrLen) == 0)
+            if (PacketSender.SendARP(intDestIp, 0, macAddr, ref macAddrLen) == 0)
             {
                 DeviceData data = new DeviceData();
                 data.Adapter = SrcIp.ToString();
                 data.Address = DestIp.ToString();
                 data.Mac = new PhysicalAddress(macAddr).ToString();
-                data.Name = Dns.GetHostEntry(DestIp.ToString()).HostName;
+                try
+                {
+                    data.Name = Dns.GetHostEntry(DestIp.ToString()).HostName;
+                }
+                catch
+                {
+                    data.Name = "";
+                }
+
                 return data;
             }
 
@@ -90,24 +107,26 @@ namespace IpScanner
                         continue;
                     }
 
-                    string subnetMask = address.IPv4Mask.ToString();
+                    IPAddress subnetMask = address.IPv4Mask;
+
+                    IPAddress networkAddress = GetNetworkAddress(address.Address, subnetMask);
+
                     if (GetNetworkClass(subnetMask) != NetworkClass.ClassC)
                     {
                         continue;
                     }
 
-                    string ipAddress = address.Address.ToString();
-
-                    adapters.Add(ipAddress);
+                    int maskPrefix = 24 + Convert.ToString(subnetMask.GetAddressBytes()[3], 2).Count(f => f == '1');
+                    adapters.Add($"{networkAddress}:{maskPrefix}");
                 }
             }
 
             return adapters;
         }
 
-        private NetworkClass GetNetworkClass(string subnetMask)
+        private NetworkClass GetNetworkClass(IPAddress subnetMask)
         {
-            string[] maskParts = subnetMask.Split('.');
+            string[] maskParts = subnetMask.ToString().Split('.');
 
             int counter = 4;
             foreach (string maskByte in maskParts)
@@ -130,13 +149,63 @@ namespace IpScanner
             return (NetworkClass)counter;
         }
 
-        private IEnumerable<string> GetPossibleIp(string[] ipParts)
+        private IEnumerable<IPAddress> GetPossibleIp(IPAddress networkIp, IPAddress subnetMask)
         {
-            for (int i = 1; i <= 254; i++)
+            IPAddress broadcastAddress = GetBroadcastAddress(networkIp, subnetMask);
+
+            byte[] networkBytes = networkIp.GetAddressBytes();
+            byte[] broadcastBytes = broadcastAddress.GetAddressBytes();
+
+            for (byte i = networkBytes[3]; i <= broadcastBytes[3]; i++)
             {
-                ipParts[3] = i.ToString();
-                yield return string.Join(".", ipParts);
+                networkBytes[3] = i;
+                yield return new IPAddress(networkBytes);
             }
+        }
+
+        private IPAddress GetNetworkAddress(IPAddress ipAddress, IPAddress subnetMask)
+        {
+            byte[] ipAddressBytes = ipAddress.GetAddressBytes();
+            byte[] subnetMaskBytes = subnetMask.GetAddressBytes();
+
+            byte[] networkAddressBytes = new byte[ipAddressBytes.Length];
+            for (int i = 0; i < ipAddressBytes.Length; i++)
+            {
+                networkAddressBytes[i] = (byte)(ipAddressBytes[i] & subnetMaskBytes[i]);
+            }
+            return new IPAddress(networkAddressBytes);
+        }
+
+        private IPAddress GetBroadcastAddress(IPAddress ipAddress, IPAddress subnetMask)
+        {
+            byte[] ipAddressBytes = ipAddress.GetAddressBytes();
+            byte[] subnetMaskBytes = subnetMask.GetAddressBytes();
+
+            byte[] broadcastAddressBytes = new byte[ipAddressBytes.Length];
+            for (int i = 0; i < ipAddressBytes.Length; i++)
+            {
+                broadcastAddressBytes[i] = (byte)(ipAddressBytes[i] | ~subnetMaskBytes[i]);
+            }
+            return new IPAddress(broadcastAddressBytes);
+        }
+
+        private IPAddress GetMaskByPrefix(int prefix)
+        {
+            byte[] bytes = new byte[4];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (prefix >= 8)
+                {
+                    bytes[i] = 255;
+                    prefix -= 8;
+                }
+                else if (prefix > 0)
+                {
+                    bytes[i] = (byte)(255 << (8 - prefix));
+                    prefix = 0;
+                }
+            }
+            return new IPAddress(bytes);
         }
     }
 

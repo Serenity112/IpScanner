@@ -1,3 +1,4 @@
+using System.Net;
 using System.Windows.Forms;
 
 namespace IpScanner
@@ -19,7 +20,7 @@ namespace IpScanner
         {
             try
             {
-                _adapters = textBox1.Text.Split(',').ToList();
+                _adapters = textBox1.Text.Split(", ").ToList();
             }
             catch (Exception)
             {
@@ -45,7 +46,7 @@ namespace IpScanner
 
             _adapters = _analyzer.GetActiveAdapters();
 
-            textBox1.Text = _adapters.Aggregate((a, b) => a + "," + b);
+            textBox1.Text = _adapters.Aggregate((a, b) => a + ", " + b);
         }
 
         private void AddSearchResult(DeviceData device)
