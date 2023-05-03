@@ -30,6 +30,8 @@ namespace IpScanner
 
         public void ScanButtonClick(object sender, EventArgs e)
         {
+            flowLayoutPanel1.Controls.Clear();
+
             UpdateAdapters();
 
             List<DeviceData>  data = _analyzer.ScanNetwork(_adapters);

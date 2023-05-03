@@ -1,16 +1,12 @@
 ﻿using System.Net;
-using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace IpScanner
 {
     public class NetworkAnalyzer
     {
-        private List<string> _targetAddresses;
-
         public NetworkAnalyzer()
         {
         }
@@ -22,23 +18,14 @@ namespace IpScanner
 
             foreach (var adapterStr in adapters)
             {
-                Console.WriteLine("adapterStr: " + adapterStr);
-
                 string[] adapterData = adapterStr.Split(':');
 
                 IPAddress networkIp = IPAddress.Parse(adapterData[0]);
-                Console.WriteLine("networkIp: " + networkIp.ToString());
 
                 IPAddress maskIp = GetMaskByPrefix(Convert.ToInt32(adapterData[1]));
-                Console.WriteLine("maskIp: " + maskIp.ToString());
 
                 foreach (IPAddress ipaddress in GetPossibleIp(networkIp, maskIp))
                 {
-                    if (ipaddress.ToString() == adapterStr)
-                    {
-                        continue;
-                    }
-
                     Thread thread = new Thread(() =>
                     {
                         DeviceData? d = SendArpRequest(networkIp, ipaddress);
@@ -61,23 +48,22 @@ namespace IpScanner
             return data;
         }
 
-        private static DeviceData? SendArpRequest(IPAddress SrcIp, IPAddress DestIp)
+        private static DeviceData? SendArpRequest(IPAddress networkIp, IPAddress destIp)
         {
             byte[] macAddr = new byte[6];
             int macAddrLen = macAddr.Length;
 
-            //int intSrcIp = BitConverter.ToInt32(SrcIp.GetAddressBytes(), 0);
-            int intDestIp = BitConverter.ToInt32(DestIp.GetAddressBytes(), 0);
+            int intDestIp = BitConverter.ToInt32(destIp.GetAddressBytes(), 0);
 
             if (PacketSender.SendARP(intDestIp, 0, macAddr, ref macAddrLen) == 0)
             {
                 DeviceData data = new DeviceData();
-                data.Adapter = SrcIp.ToString();
-                data.Address = DestIp.ToString();
+                data.Adapter = networkIp.ToString();
+                data.Address = destIp.ToString();
                 data.Mac = new PhysicalAddress(macAddr).ToString();
                 try
                 {
-                    data.Name = Dns.GetHostEntry(DestIp.ToString()).HostName;
+                    data.Name = Dns.GetHostEntry(destIp.ToString()).HostName;
                 }
                 catch
                 {
@@ -153,13 +139,15 @@ namespace IpScanner
         {
             IPAddress broadcastAddress = GetBroadcastAddress(networkIp, subnetMask);
 
-            byte[] networkBytes = networkIp.GetAddressBytes();
-            byte[] broadcastBytes = broadcastAddress.GetAddressBytes();
+            byte start = (byte)(networkIp.GetAddressBytes()[3] + 1);
+            byte end = broadcastAddress.GetAddressBytes()[3];
 
-            for (byte i = networkBytes[3]; i <= broadcastBytes[3]; i++)
+            byte[] ip = networkIp.GetAddressBytes();
+
+            for (byte i = start; i < end; i++)
             {
-                networkBytes[3] = i;
-                yield return new IPAddress(networkBytes);
+                ip[3] = i;
+                yield return new IPAddress(ip);
             }
         }
 

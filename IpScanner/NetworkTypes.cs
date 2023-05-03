@@ -10,13 +10,6 @@ namespace IpScanner
         ClassC = 1,
     }
 
-    public struct LocalNetworkData
-    {
-        public NetworkInterface Interface;
-        public UnicastIPAddressInformation AddressInformation;
-        public List<DeviceData> DevicesData;
-    }
-
     public struct DeviceData
     {
         public string Adapter;
